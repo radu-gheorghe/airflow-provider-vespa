@@ -20,6 +20,7 @@ class VespaIngestOperator(BaseOperator):
                  **kwargs):
         super().__init__(**kwargs)
         self.document_generator = document_generator
+        # TODO retry logic should be here?
         self.vespa_conn_id = vespa_conn_id
 
     def execute(self, context: Context):

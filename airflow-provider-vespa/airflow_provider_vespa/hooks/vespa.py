@@ -16,6 +16,7 @@ class VespaHook(BaseHook):
 
     def __init__(self, conn_id: str = default_conn_name):
         super().__init__()
+        # TODO should the connection be Vespa-specific or can we keep it generic?
         self.conn = self.get_connection(conn_id)
         # TODO handle authentication
         self.vespa_app = Vespa(url=self.conn.host.rstrip("/"))
@@ -42,6 +43,7 @@ class VespaHook(BaseHook):
             "iter": bodies,
             # TODO support update and delete
             "schema": self.schema,
+            # TODO namespace and schema should be properties of the hook, not the connection?
             "namespace": self.namespace,
             "callback": callback,
 
