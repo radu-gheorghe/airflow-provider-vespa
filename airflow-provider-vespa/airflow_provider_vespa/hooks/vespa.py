@@ -17,8 +17,13 @@ class VespaHook(BaseHook):
     def __init__(self, conn_id: str = default_conn_name):
         super().__init__()
         # TODO should the connection be Vespa-specific or can we keep it generic?
+        # Jarek: It makes sense to use vespa-specific connection, then it will be selectable in the UI
+        # even if it does not have any specific extra fields. But since the extra fields are here,
+        # Having a Vespa-specific connection will allow to have a better UX in the UI with types of
+        # the extra fields. descriptions, hints etc.
         self.conn = self.get_connection(conn_id)
         # TODO handle authentication
+        # Jarek: Would be great :)
         self.vespa_app = Vespa(url=self.conn.host.rstrip("/"))
         extra = self.conn.extra_dejson or {}
         self.namespace = extra["namespace"]
@@ -27,7 +32,7 @@ class VespaHook(BaseHook):
         self.max_workers = extra.get("max_workers")
         self.max_connections = extra.get("max_connections")
         self.feed_errors = [] # collect errors from callback
-    
+
     def default_callback(self, response: VespaResponse, id: str):
         if not response.is_successful():
             error_msg = f"ID: {id} Status: {response.status_code} Reason: {response.get_json()}"
@@ -44,6 +49,8 @@ class VespaHook(BaseHook):
             # TODO support update and delete
             "schema": self.schema,
             # TODO namespace and schema should be properties of the hook, not the connection?
+            # Jarek: they could be both - properties of the connection , overrideable in the hook
+            # That is the pattern we often use in Airflow
             "namespace": self.namespace,
             "callback": callback,
 
@@ -54,13 +61,13 @@ class VespaHook(BaseHook):
                 "max_connections": self.max_connections
             }.items() if v is not None}
         }
-            
+
         # Clear any previous errors
         self.feed_errors = []
-        
+
         # feed documents
         self.vespa_app.feed_async_iterable(**feed_kwargs)
-        
+
         # Check for any errors that occurred during feeding
         if self.feed_errors:
             raise VespaError(f"At least one feed operation failed: {'; '.join(self.feed_errors)}")
