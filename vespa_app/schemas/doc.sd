@@ -1,0 +1,7 @@
+schema doc {
+    document doc {
+        field body type string {
+            indexing: summary | index
+        }
+    }
+}

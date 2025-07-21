@@ -1,0 +1,17 @@
+### select everything
+POST http://localhost:8082/search
+Content-Type: application/json
+
+{
+    "yql": "select * from doc where true"
+}
+
+### insert a document
+POST http://localhost:8082/document/v1/default/doc/docid/582d3b9d-9b57-4a54-b183-eed6f0455763
+Content-Type: application/json
+
+{
+    "fields": {
+        "body": "hello world manually"
+    }
+}
