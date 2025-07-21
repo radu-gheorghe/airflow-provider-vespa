@@ -1,28 +1,31 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Callable, Iterable, Union
 from airflow.models import BaseOperator
 from airflow.utils.context import Context
 from airflow_provider_vespa.hooks.vespa import VespaHook
 
 class VespaIngestOperator(BaseOperator):
     """
-    Writes one document (`body`) to Vespa.
-    :param body: dict, eg {"body": "hello world"}
+    Writes documents to Vespa from various sources.
+    
+    :param document_generator: Callable that returns an iterable of documents, or direct iterable
     :param vespa_conn_id: Airflow connection id
     """
 
     # TODO: how to add flexibility here in terms of schema?
-    
-    template_fields = ("body",)          # lets you {{ render }} Jinja vars
 
-    def __init__(self, *, body: dict[str, Any], vespa_conn_id: str = VespaHook.default_conn_name, **kwargs):
+    def __init__(self, *, 
+                 document_generator: Union[Callable[[], Iterable[dict]], Iterable[dict]],
+                 vespa_conn_id: str = VespaHook.default_conn_name, 
+                 **kwargs):
         super().__init__(**kwargs)
-        self.body = body
+        self.document_generator = document_generator
         self.vespa_conn_id = vespa_conn_id
 
     def execute(self, context: Context):
         hook = VespaHook(self.vespa_conn_id)
-        # TODO how do we achieve throughput?
-        result = hook.put_document(self.body)
-        self.log.info("Indexed document: %s", result)
-        return result
+        
+        # Pass documents to the hook
+        documents = self.document_generator() if callable(self.document_generator) else self.document_generator
+        hook.feed_async_iterable(documents)
+        self.log.info("Successfully indexed documents")

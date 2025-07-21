@@ -1,4 +1,7 @@
-import json, uuid, requests, vespa
+from typing import Callable, Iterable
+from vespa.application import Vespa
+from vespa.io import VespaResponse
+from vespa.exceptions import VespaError
 from airflow.hooks.base import BaseHook
 
 class VespaHook(BaseHook):
@@ -12,17 +15,50 @@ class VespaHook(BaseHook):
     default_conn_name = "vespa_default"
 
     def __init__(self, conn_id: str = default_conn_name):
-        # TODO use pyvespa
         super().__init__()
         self.conn = self.get_connection(conn_id)
-        self.base_url = self.conn.host.rstrip("/")
+        # TODO handle authentication
+        self.vespa_app = Vespa(url=self.conn.host.rstrip("/"))
         extra = self.conn.extra_dejson or {}
         self.namespace = extra["namespace"]
         self.schema = extra["schema"]
+        self.max_queue_size = extra.get("max_queue_size")
+        self.max_workers = extra.get("max_workers")
+        self.max_connections = extra.get("max_connections")
+        self.feed_errors = [] # collect errors from callback
+    
+    def default_callback(self, response: VespaResponse, id: str):
+        if not response.is_successful():
+            error_msg = f"ID: {id} Status: {response.status_code} Reason: {response.get_json()}"
+            self.feed_errors.append(error_msg)
 
-    def put_document(self, body: dict, doc_id: str | None = None):
-        doc_id = doc_id or str(uuid.uuid4())
-        url = f"{self.base_url}/document/v1/{self.namespace}/{self.schema}/docid/{doc_id}"
-        resp = requests.post(url, data=json.dumps(body), headers={"Content-Type": "application/json"})
-        resp.raise_for_status()
-        return resp.json()
+    def feed_async_iterable(self, bodies: Iterable[dict], callback: Callable = None):
+        if callback is None:
+            callback = self.default_callback
+
+        # Build kwargs with mandatory and optional arguments
+        feed_kwargs = {
+            # mandatory arguments
+            "iter": bodies,
+            # TODO support update and delete
+            "schema": self.schema,
+            "namespace": self.namespace,
+            "callback": callback,
+
+            # optional arguments
+            **{k: v for k, v in {
+                "max_queue_size": self.max_queue_size,
+                "max_workers": self.max_workers,
+                "max_connections": self.max_connections
+            }.items() if v is not None}
+        }
+            
+        # Clear any previous errors
+        self.feed_errors = []
+        
+        # feed documents
+        self.vespa_app.feed_async_iterable(**feed_kwargs)
+        
+        # Check for any errors that occurred during feeding
+        if self.feed_errors:
+            raise VespaError(f"At least one feed operation failed: {'; '.join(self.feed_errors)}")
