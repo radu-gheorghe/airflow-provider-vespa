@@ -1,8 +1,10 @@
-from typing import Callable, Iterable
+from typing import Callable, Dict, Iterable, List
 from vespa.application import Vespa
 from vespa.io import VespaResponse
 from vespa.exceptions import VespaError
 from airflow.hooks.base import BaseHook
+import uuid
+from queue import Queue
 
 class VespaHook(BaseHook):
     """
@@ -26,21 +28,35 @@ class VespaHook(BaseHook):
         self.max_queue_size = extra.get("max_queue_size")
         self.max_workers = extra.get("max_workers")
         self.max_connections = extra.get("max_connections")
-        self.feed_errors = [] # collect errors from callback
+        self.feed_errors_queue = Queue()
+
+    def _normalise(self,
+        bodies: Iterable[Dict], *, gen_missing_id: bool = True
+    ) -> List[Dict]:
+        norm: List[Dict] = []
+        for b in bodies:
+            if "fields" in b:                 # already in Vespa format
+                norm.append(b)
+                continue
+            # treat as raw "fields" dict
+            doc_id = b.pop("id", None) or (str(uuid.uuid4()) if gen_missing_id else None)
+            norm.append({"id": doc_id, "fields": b})
+        return norm
     
     def default_callback(self, response: VespaResponse, id: str):
         if not response.is_successful():
-            error_msg = f"ID: {id} Status: {response.status_code} Reason: {response.get_json()}"
-            self.feed_errors.append(error_msg)
+            self.feed_errors_queue.put({"id": id, "status": response.status_code, "reason": response.get_json()})
 
     def feed_async_iterable(self, bodies: Iterable[dict], callback: Callable = None):
         if callback is None:
             callback = self.default_callback
+        
+        docs = self._normalise(bodies)
 
         # Build kwargs with mandatory and optional arguments
         feed_kwargs = {
             # mandatory arguments
-            "iter": bodies,
+            "iter": docs,
             # TODO support update and delete
             "schema": self.schema,
             # TODO namespace and schema should be properties of the hook, not the connection?
@@ -56,11 +72,22 @@ class VespaHook(BaseHook):
         }
             
         # Clear any previous errors
-        self.feed_errors = []
+        self.feed_errors_queue = Queue()
         
         # feed documents
         self.vespa_app.feed_async_iterable(**feed_kwargs)
         
-        # Check for any errors that occurred during feeding
-        if self.feed_errors:
-            raise VespaError(f"At least one feed operation failed: {'; '.join(self.feed_errors)}")
+        # Collect all errors from the queue
+        feed_errors = []
+        while not self.feed_errors_queue.empty():
+            try:
+                error = self.feed_errors_queue.get_nowait()
+                feed_errors.append(error)
+            except:
+                break
+        
+        return {
+            "sent": len(docs),
+            "errors": len(feed_errors),
+            "error_details": feed_errors,
+        }

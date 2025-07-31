@@ -15,3 +15,6 @@ Content-Type: application/json
         "body": "hello world manually"
     }
 }
+
+### delete everything
+DELETE http://localhost:8082/document/v1/default/doc/docid?selection=true&cluster=content

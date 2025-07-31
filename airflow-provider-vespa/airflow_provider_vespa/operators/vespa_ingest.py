@@ -1,32 +1,28 @@
 from __future__ import annotations
-from typing import Any, Callable, Iterable, Union
+from typing import Iterable
 from airflow.models import BaseOperator
-from airflow.utils.context import Context
-from airflow_provider_vespa.hooks.vespa import VespaHook
+from airflow_provider_vespa.triggers.vespa_feed_trigger import VespaFeedTrigger
+from airflow.exceptions import AirflowException
 
 class VespaIngestOperator(BaseOperator):
-    """
-    Writes documents to Vespa from various sources.
-    
-    :param document_generator: Callable that returns an iterable of documents, or direct iterable
-    :param vespa_conn_id: Airflow connection id
-    """
+    template_fields = ("docs",)
 
-    # TODO: how to add flexibility here in terms of schema?
+    def __init__(self, *, docs: Iterable[dict], vespa_conn_id: str = "vespa_default", **kw):
+        super().__init__(**kw)
+        self.docs, self.vespa_conn_id = docs, vespa_conn_id
 
-    def __init__(self, *, 
-                 document_generator: Union[Callable[[], Iterable[dict]], Iterable[dict]],
-                 vespa_conn_id: str = VespaHook.default_conn_name, 
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.document_generator = document_generator
-        # TODO retry logic should be here?
-        self.vespa_conn_id = vespa_conn_id
+    def execute(self, context):
+        # non‑deferrable fallback. TODO: do we need this?
+        from airflow_provider_vespa.hooks.vespa import VespaHook
+        return VespaHook(self.vespa_conn_id).feed_async_iterable(self.docs)
 
-    def execute(self, context: Context):
-        hook = VespaHook(self.vespa_conn_id)
-        
-        # Pass documents to the hook
-        documents = self.document_generator() if callable(self.document_generator) else self.document_generator
-        hook.feed_async_iterable(documents)
-        self.log.info("Successfully indexed documents")
+    def execute_defer(self, context):
+        self.defer(
+            trigger=VespaFeedTrigger(self.docs, self.vespa_conn_id),
+            method_name="execute_complete",
+        )
+
+    def execute_complete(self, context, event):
+        if not event["success"]:
+            raise AirflowException(f"Vespa feed failed: {event['error']}")
+        return event

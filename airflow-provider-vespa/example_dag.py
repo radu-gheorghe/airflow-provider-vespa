@@ -1,34 +1,35 @@
 from datetime import datetime
-import uuid
-from airflow import DAG
+
+from airflow.decorators import dag, task
 from airflow_provider_vespa.operators.vespa_ingest import VespaIngestOperator
 
-def generate_sample_documents():
-    """Generator function that yields documents with explicit IDs"""
-    for i in range(5):
-        yield {
-            "id": f"doc_{i}_{uuid.uuid4().hex[:8]}",
-            "fields": {
-                "body": f"This is the content of document {i}"
-            }
-        }
-
-with DAG(
+@dag(
     dag_id="vespa_hello_world",
-    start_date=datetime(2025, 7, 17),
+    start_date=datetime(2025, 7, 30),
     schedule="@once",
     catchup=False,
     tags=["vespa", "demo"],
-) as dag:
+)
+def vespa_dynamic():
 
-    # Generator function
-    VespaIngestOperator(
-        task_id="send_generated_docs",
-        document_generator=generate_sample_documents,
-    )
+    # this could read from a DB, S3, etc. and build micro-batches
+    @task
+    def build_batches():
+        return [
+            [  # batch‑0 → Task 0
+                {"id": "doc1", "fields": {"body": "first document"}},
+                {"id": "doc2", "fields": {"body": "second document"}},
+            ],
+            [  # batch‑1 → Task 1
+                {"id": "doc3", "fields": {"body": "third document"}},
+                # TODO: this should fail and it doesn't seem to
+                {"id": "doc4", "fields": {"doesntexist": "fourth document"}},
+            ],
+        ]
 
-    # List of documents
-    VespaIngestOperator(
-        task_id="send_single_direct",
-        document_generator=[{"id": "single_doc", "fields": {"body": "single document"}}],
-    )
+    batches = build_batches()
+
+    # dynamically create one VespaIngestOperator per micro-batch
+    VespaIngestOperator.partial(task_id="send_batch").expand(docs=batches)
+
+dag = vespa_dynamic()
