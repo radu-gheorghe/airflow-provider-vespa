@@ -30,6 +30,32 @@ class VespaHook(BaseHook):
         self.max_connections = extra.get("max_connections")
         self.feed_errors_queue = Queue()
 
+    @classmethod
+    def from_resolved_connection(cls, *, host: str, extra: Dict):
+        """Instantiate a ``VespaHook`` without querying Airflow's metadata database.
+
+        This helper is intended for use inside Trigger processes, where
+        synchronous DB access (e.g. ``BaseHook.get_connection``) is prohibited.
+        The caller must supply the already-resolved host and the ``extra``
+        mapping that would normally come from an Airflow ``Connection``.
+        """
+        import types
+
+        self = cls.__new__(cls)
+        BaseHook.__init__(self)
+
+        # Fake a minimal ``Connection``-like object for backwards compatibility.
+        self.conn = types.SimpleNamespace(host=host, extra=extra)
+        self.vespa_app = Vespa(url=host.rstrip("/"))
+        # Extract parameters exactly as in the normal constructor.
+        self.namespace = extra["namespace"]
+        self.schema = extra["schema"]
+        self.max_queue_size = extra.get("max_queue_size")
+        self.max_workers = extra.get("max_workers")
+        self.max_connections = extra.get("max_connections")
+        self.feed_errors_queue = Queue()
+        return self
+
     def _normalise(self,
         bodies: Iterable[Dict], *, gen_missing_id: bool = True
     ) -> List[Dict]:

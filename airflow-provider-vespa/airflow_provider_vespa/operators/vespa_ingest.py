@@ -12,17 +12,28 @@ class VespaIngestOperator(BaseOperator):
         self.docs, self.vespa_conn_id = docs, vespa_conn_id
 
     def execute(self, context):
-        # non‑deferrable fallback. TODO: do we need this?
-        from airflow_provider_vespa.hooks.vespa import VespaHook
-        return VespaHook(self.vespa_conn_id).feed_async_iterable(self.docs)
+        """Resolve the Vespa Airflow connection in the worker and defer the actual
+        ingestion work to a trigger. Only plain, JSON-serialisable data is sent
+        to the trigger so it can run without database access.
+        """
+        from airflow.hooks.base import BaseHook
+        from airflow.exceptions import TaskDeferred
 
-    def execute_defer(self, context):
-        self.defer(
-            trigger=VespaFeedTrigger(self.docs, self.vespa_conn_id),
+        conn = BaseHook.get_connection(self.vespa_conn_id)
+        conn_info = {
+            "host": conn.host,
+            "extra": conn.extra_dejson or {},
+        }
+
+        raise TaskDeferred(
+            trigger=VespaFeedTrigger(self.docs, conn_info),
             method_name="execute_complete",
         )
 
     def execute_complete(self, context, event):
         if not event["success"]:
-            raise AirflowException(f"Vespa feed failed: {event['error']}")
-        return event
+            raise AirflowException(
+                f"{len(event['errors'])} document(s) failed out of {len(self.docs)}; "
+                f"Error details: {event['errors']}"
+            )
+        return {"ingested": len(self.docs)}

@@ -1,7 +1,7 @@
 from __future__ import annotations
-import asyncio
 from typing import Any, Dict, Iterable
 from airflow.triggers.base import BaseTrigger, TriggerEvent
+import asyncio
 
 class VespaFeedTrigger(BaseTrigger):
     """
@@ -11,29 +11,34 @@ class VespaFeedTrigger(BaseTrigger):
     def __init__(
         self,
         docs: Iterable[Dict],
-        conn_id: str = "vespa_default",
+        conn_info: Dict[str, Any],
     ):
         super().__init__()
-        self.docs, self.conn_id = list(docs), conn_id
+        self.docs = list(docs)
+        self.conn_info = conn_info
 
     def serialize(self) -> tuple[str, Dict[str, Any]]:
         return (
             "airflow_provider_vespa.triggers.vespa_feed_trigger.VespaFeedTrigger",
-            {"docs": self.docs, "conn_id": self.conn_id},
+            {"docs": self.docs, "conn_info": self.conn_info},
         )
 
     async def run(self):
-        from airflow_provider_vespa.hooks.vespa import VespaHook
-
-        hook = VespaHook(self.conn_id)
+        # Run potentially blocking Vespa client calls in a separate thread so we don't block the
+        # triggerer's event loop and also avoid calling sync code directly in the async context.
         loop = asyncio.get_event_loop()
 
-        # run the sync pyvespa call in a thread so we don't block the Triggerer
-        summary = await loop.run_in_executor(None, hook.feed_async_iterable, self.docs)
+        def _feed():
+            from airflow_provider_vespa.hooks.vespa import VespaHook
+            hook = VespaHook.from_resolved_connection(
+                host=self.conn_info["host"],
+                extra=self.conn_info["extra"],
+            )
+            return hook.feed_async_iterable(self.docs)
+
+        summary = await loop.run_in_executor(None, _feed)
 
         if summary["errors"]:
-            yield TriggerEvent(
-                {"success": False, "error": summary["first_error"], **summary}
-            )
+            yield TriggerEvent({"success": False, "errors": summary["error_details"]})
         else:
-            yield TriggerEvent({"success": True, **summary})
+            yield TriggerEvent({"success": True})
