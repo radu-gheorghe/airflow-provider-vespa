@@ -18,18 +18,18 @@
               configuration is equivalent to using a single
               security/clients.pem
             -->
-            <!-- <client id="mtls" permissions="read,write">
+            <client id="mtls" permissions="read,write">
               <certificate file="security/clients.pem"/>
-            </client> -->
+            </client>
         
             <!--
               The below sets up a client with read permissions.
               Note that the "myToken" token must be created in
               the console before deploying.
-            <client id="tokenClient" permissions="read,write">
-              <token id="myToken"/>
-            </client>
             -->
+            <client id="tokenClient" permissions="read,write">
+              <token id="test-token"/>
+            </client>
           </clients>
         <!--
             <document-api> tells the container that it should accept documents for indexing. Through the

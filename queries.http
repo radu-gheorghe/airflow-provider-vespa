@@ -15,3 +15,9 @@ Content-Type: application/json
         "body": "hello world manually"
     }
 }
+
+### delete everything
+DELETE http://localhost:8082/document/v1/default/doc/docid?selection=true&cluster=content
+
+## in Vespa Cloud
+curl --key /Users/radu/.vespa/$VESPA_CLOUD_APP_NAME/data-plane-private-key.pem --cert /Users/radu/.vespa/$VESPA_CLOUD_APP_NAME/data-plane-public-cert.pem -XDELETE 'https://'$VESPA_CLOUD_ENDPOINT'/document/v1/default/doc/docid?selection=true&cluster=content'
