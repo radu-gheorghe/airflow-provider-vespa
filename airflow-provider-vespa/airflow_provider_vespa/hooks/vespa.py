@@ -36,7 +36,8 @@ class VespaHook(BaseHook):
         super().__init__()
         self.conn = self.get_connection(conn_id)
         extra = self.conn.extra_dejson or {}
-        self._configure(
+        
+        self._configure_from_connection(
             host=self.conn.host,
             namespace=namespace or extra.get("namespace", "default"),
             schema=schema or self.conn.schema,
@@ -54,8 +55,8 @@ class VespaHook(BaseHook):
             "extra__vespa__max_workers": StringField("Max feed workers"),
             "extra__vespa__max_connections": StringField("Max feed connections"),
             "extra__vespa__vespa_cloud_secret_token": StringField("Vespa Cloud secret token"),
-            "extra__vespa__client_cert_secret": StringField("Client certificate secret name"),
-            "extra__vespa__client_key_secret": StringField("Client key secret name"),
+            "extra__vespa__client_cert_path": StringField("Client certificate file path"),
+            "extra__vespa__client_key_path": StringField("Client key file path"),
         }
 
     @classmethod
@@ -68,49 +69,33 @@ class VespaHook(BaseHook):
             "placeholders": {
                 "extra__vespa__vespa_cloud_secret_token": "",
                 "extra__vespa__namespace": "my_namespace",
-                "extra__vespa__client_cert_secret": "vespa_client_cert",
-                "extra__vespa__client_key_secret": "vespa_client_key",
+                "extra__vespa__client_cert_path": "/path/to/client.pem",
+                "extra__vespa__client_key_path": "/path/to/client.key",
             },
         }
 
-    def _write_temp_cert(self, cert_content: str, cert_type: str) -> str:
-        """Write certificate content to a temporary file and return the path."""
-        import tempfile
-        import os
-        
-        # Create a temporary file that will be cleaned up when the process exits
-        fd, temp_path = tempfile.mkstemp(suffix=f".{cert_type}", prefix="vespa_")
-        try:
-            with os.fdopen(fd, 'w') as f:
-                f.write(cert_content)
-            # Set restrictive permissions for security
-            os.chmod(temp_path, 0o600)
-            return temp_path
-        except:
-            # Clean up on error
-            os.unlink(temp_path)
-            raise
-
     # -------------------------------------------------------------------------------
 
-    def _configure(self, *, host: str, namespace: str, schema: str, extra: Dict, cert_content: str = None, key_content: str = None):
+    def _configure_from_connection(self, *, host: str, namespace: str, schema: str, extra: Dict):
         """Populate instance attributes shared by both constructors."""
         
-        # Handle mTLS certificates
-        cert_file = key_file = None
-        
-        if cert_content:
-            cert_file = self._write_temp_cert(cert_content, "cert")
-        
-        if key_content:
-            key_file = self._write_temp_cert(key_content, "key")
+        # Get certificate file paths directly from connection config
+        # TODO: In the future, pyvespa should accept certificate content as strings
+        # so we can store certificates as encrypted Airflow Variables instead of files
+        cert_file = extra.get("extra__vespa__client_cert_path")
+        key_file = extra.get("extra__vespa__client_key_path")
         
         if not cert_file or not key_file:
-            self.log.warning("No client certificate or key found, trying token authentication")
-        
+            self.log.info("No client certificate or key found, trying token authentication")
+        else:
+            self.log.info("Using mTLS authentication with certificate files")
+
         token = extra.get("extra__vespa__vespa_cloud_secret_token")
         if not token:
-            self.log.warning("No token found, either. We're not authenticating.")
+            self.log.info("No token found, using certificate-only authentication")
+        else:
+            self.log.info("Token authentication available")
+        
         
         self.vespa_app = Vespa(
             # TODO: param validation
@@ -119,6 +104,7 @@ class VespaHook(BaseHook):
             cert=cert_file,
             key=key_file,
         )
+        
         self.namespace = namespace
         self.schema = schema
         self.max_queue_size = extra.get("max_queue_size")
@@ -126,9 +112,8 @@ class VespaHook(BaseHook):
         self.max_connections = extra.get("max_connections")
         self.feed_errors_queue = Queue()
 
-
     @classmethod
-    def from_resolved_connection(cls, *, host: str, schema: str | None = None, namespace: str | None = None, extra: Dict, cert_content: str = None, key_content: str = None):
+    def from_resolved_connection(cls, *, host: str, schema: str | None = None, namespace: str | None = None, extra: Dict):
         """Instantiate a ``VespaHook`` without querying Airflow's metadata database.
 
         This helper is intended for use inside Trigger processes, where
@@ -143,13 +128,12 @@ class VespaHook(BaseHook):
 
         # Fake a minimal ``Connection``-like object for backwards compatibility.
         self.conn = types.SimpleNamespace(host=host, extra=extra)
-        self._configure(
+        
+        self._configure_from_connection(
             host=host,
             namespace=namespace or extra.get("namespace", "default"),
             schema=schema or extra.get("schema"),
             extra=extra,
-            cert_content=cert_content,
-            key_content=key_content,
         )
         return self
 
@@ -208,6 +192,7 @@ class VespaHook(BaseHook):
         # Clear any previous errors
         self.feed_errors_queue = Queue()
         
+        self.log.info(f"Starting {operation_type} operation for {len(docs)} documents")
         self.vespa_app.feed_async_iterable(**feed_kwargs)
         
         # Collect all errors from the queue

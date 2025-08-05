@@ -25,19 +25,17 @@ class VespaFeedTrigger(BaseTrigger):
         )
 
     async def run(self):
-        from airflow_provider_vespa.hooks.vespa import VespaHook
-        
-        hook = VespaHook.from_resolved_connection(
-            host=self.conn_info["host"],
-            schema=self.conn_info["schema"],
-            namespace=self.conn_info["namespace"],
-            extra=self.conn_info["extra"],
-            cert_content=self.conn_info.get("cert_content"),
-            key_content=self.conn_info.get("key_content"),
-        )
-        
         try:
-            # Run the synchronous hook method in the current event loop
+            from airflow_provider_vespa.hooks.vespa import VespaHook
+            
+            hook = VespaHook.from_resolved_connection(
+                host=self.conn_info["host"],
+                schema=self.conn_info["schema"],
+                namespace=self.conn_info["namespace"],
+                extra=self.conn_info["extra"],
+            )
+            
+            # Run the synchronous hook method in a thread pool
             import asyncio
             loop = asyncio.get_event_loop()
             
@@ -51,4 +49,9 @@ class VespaFeedTrigger(BaseTrigger):
             else:
                 yield TriggerEvent({"success": True})
         except Exception as e:
-            yield TriggerEvent({"success": False, "errors": [{"error": str(e)}]})
+            # Log the full exception for debugging purposes
+            import traceback
+            error_msg = f"Trigger failed: {type(e).__name__}: {e}"
+            print(f"ERROR: {error_msg}")
+            traceback.print_exc()
+            yield TriggerEvent({"success": False, "errors": [{"error": error_msg}]})

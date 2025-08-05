@@ -20,33 +20,15 @@ class VespaIngestOperator(BaseOperator):
         """
         from airflow.hooks.base import BaseHook
         from airflow.exceptions import TaskDeferred
-        from airflow.models import Variable
 
         conn = BaseHook.get_connection(self.vespa_conn_id)
         extra = conn.extra_dejson or {}
         
-        # Resolve certificates in the worker context where sync DB calls are allowed
-        cert_content = key_content = None
-        if cert_secret := extra.get("extra__vespa__client_cert_secret"):
-            try:
-                cert_content = Variable.get(cert_secret)
-            except KeyError:
-                self.log.warning(f"Client certificate secret '{cert_secret}' not found")
-        
-        if key_secret := extra.get("extra__vespa__client_key_secret"):
-            try:
-                key_content = Variable.get(key_secret)
-            except KeyError:
-                self.log.warning(f"Client key secret '{key_secret}' not found")
-
         conn_info = {
             "host": conn.host,
             "schema": conn.schema,
             "namespace": extra.get("extra__vespa__namespace") or "default",
             "extra": extra,
-            # Pass resolved certificate content directly
-            "cert_content": cert_content,
-            "key_content": key_content,
         }
 
         raise TaskDeferred(
