@@ -1,0 +1,5 @@
+name: "Vespa"
+package-name: "airflow-provider-vespa"
+connection-types:
+  - hook-class-name: airflow_provider_vespa.hooks.vespa.VespaHook
+    connection-type: vespa

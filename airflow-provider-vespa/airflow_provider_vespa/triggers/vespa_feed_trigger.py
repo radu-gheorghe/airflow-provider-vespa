@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, Iterable
 from airflow.triggers.base import BaseTrigger, TriggerEvent
-import asyncio
 
 class VespaFeedTrigger(BaseTrigger):
     """
@@ -12,33 +11,44 @@ class VespaFeedTrigger(BaseTrigger):
         self,
         docs: Iterable[Dict],
         conn_info: Dict[str, Any],
+        operation_type: str = "feed",
     ):
         super().__init__()
         self.docs = list(docs)
         self.conn_info = conn_info
+        self.operation_type = operation_type
 
     def serialize(self) -> tuple[str, Dict[str, Any]]:
         return (
             "airflow_provider_vespa.triggers.vespa_feed_trigger.VespaFeedTrigger",
-            {"docs": self.docs, "conn_info": self.conn_info},
+            {"docs": self.docs, "conn_info": self.conn_info, "operation_type": self.operation_type},
         )
 
     async def run(self):
-        # Run potentially blocking Vespa client calls in a separate thread so we don't block the
-        # triggerer's event loop and also avoid calling sync code directly in the async context.
-        loop = asyncio.get_event_loop()
-
-        def _feed():
-            from airflow_provider_vespa.hooks.vespa import VespaHook
-            hook = VespaHook.from_resolved_connection(
-                host=self.conn_info["host"],
-                extra=self.conn_info["extra"],
-            )
-            return hook.feed_async_iterable(self.docs)
-
-        summary = await loop.run_in_executor(None, _feed)
-
-        if summary["errors"]:
-            yield TriggerEvent({"success": False, "errors": summary["error_details"]})
-        else:
-            yield TriggerEvent({"success": True})
+        from airflow_provider_vespa.hooks.vespa import VespaHook
+        
+        hook = VespaHook.from_resolved_connection(
+            host=self.conn_info["host"],
+            schema=self.conn_info["schema"],
+            namespace=self.conn_info["namespace"],
+            extra=self.conn_info["extra"],
+            cert_content=self.conn_info.get("cert_content"),
+            key_content=self.conn_info.get("key_content"),
+        )
+        
+        try:
+            # Run the synchronous hook method in the current event loop
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            def _feed():
+                return hook.feed_iterable(self.docs, operation_type=self.operation_type)
+            
+            summary = await loop.run_in_executor(None, _feed)
+            
+            if summary["errors"]:
+                yield TriggerEvent({"success": False, "errors": summary["error_details"]})
+            else:
+                yield TriggerEvent({"success": True})
+        except Exception as e:
+            yield TriggerEvent({"success": False, "errors": [{"error": str(e)}]})

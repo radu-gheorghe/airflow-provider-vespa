@@ -52,17 +52,19 @@ pip install -e ./airflow-provider-vespa
 Then copy the DAG to the Airflow DAGs folder:
 
 ```bash
-cp airflow-provider-vespa/example_dag.py airflow_home/dags/ 
+cp airflow-provider-vespa/example_dag.py $AIRFLOW_HOME/dags/ 
 ```
 
 Finally, run the DAG in the Airflow UI. Note that forks might be...forked... on OSX, so you'll have to do something like this in order for deferred tasks to work:
 ```bash
-# 1. Disable the proxy lookup that triggers the macOS bug
 export no_proxy="*"
-
-# 2. Disable Apple’s fork-safety guard that can also bite multithreaded Python
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+export MULTIPROCESSING_START_METHOD=spawn
+export AIRFLOW__CORE__EXECUTOR=SequentialExecutor
 
-# 3. Start Airflow, for example:
 airflow standalone
 ```
+
+## Securing the connection (e.g. for Vespa Cloud)
+
+TODO

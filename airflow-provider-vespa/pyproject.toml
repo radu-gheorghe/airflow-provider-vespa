@@ -2,7 +2,7 @@
 name = "airflow-provider-vespa"
 version = "0.0.1"
 requires-python = ">=3.9"
-dependencies = ["apache-airflow>=3.0", "requests>=2.31", "pyvespa>=0.59.0"]
+dependencies = ["apache-airflow>=3.0", "requests>=2.31", "pyvespa>=0.59.0", "WTForms>=3.0"]
 
 [project.entry-points."apache_airflow_provider"]
 provider_info = "airflow_provider_vespa:get_provider_info"
