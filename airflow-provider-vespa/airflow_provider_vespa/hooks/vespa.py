@@ -84,17 +84,23 @@ class VespaHook(BaseHook):
         # so we can store certificates as encrypted Airflow Variables instead of files
         cert_file = extra.get("extra__vespa__client_cert_path")
         key_file = extra.get("extra__vespa__client_key_path")
+
+        # Get token as well, in case we need it
+        token = extra.get("extra__vespa__vespa_cloud_secret_token")
         
+        # If no certificate files are provided, we can use token authentication
         if not cert_file or not key_file:
             self.log.info("No client certificate or key found, trying token authentication")
+            # let's set both to None (in case one isn't), so we can use token authentication
+            cert_file = None
+            key_file = None
+
+            if not token:
+                self.log.info("No token found, either. Not authenticating.")
+            else:
+                self.log.info("Token authentication available")
         else:
             self.log.info("Using mTLS authentication with certificate files")
-
-        token = extra.get("extra__vespa__vespa_cloud_secret_token")
-        if not token:
-            self.log.info("No token found, using certificate-only authentication")
-        else:
-            self.log.info("Token authentication available")
         
         
         self.vespa_app = Vespa(
