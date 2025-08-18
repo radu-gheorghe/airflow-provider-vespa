@@ -52,7 +52,29 @@ pip install -e ./airflow-provider-vespa
 Then copy the DAG to the Airflow DAGs folder:
 
 ```bash
-cp airflow-provider-vespa/example_dag.py airflow_home/dags/ 
+cp airflow-provider-vespa/example_dag.py $AIRFLOW_HOME/dags/ 
 ```
 
-Finally, run the DAG in the Airflow UI.
+Finally, run the DAG in the Airflow UI. Note that forks might be...forked... on OSX, so you'll have to do something like this in order for deferred tasks to work:
+```bash
+export no_proxy="*"
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+export MULTIPROCESSING_START_METHOD=spawn
+export AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+
+airflow standalone
+```
+
+## Securing the connection (e.g. for Vespa Cloud)
+
+Example mTLS connection (replace the variables with your own):
+
+```bash
+airflow connections add vespa_mtls --conn-type vespa --conn-host "https://$VESPA_CLOUD_ENDPOINT" --conn-schema "doc" --conn-extra '{"extra__vespa__client_cert_path": "/Users/radu/.vespa/'$VESPA_CLOUD_APP_NAME'/data-plane-public-cert.pem", "extra__vespa__client_key_path": "/Users/radu/.vespa/'$VESPA_CLOUD_APP_NAME'/data-plane-private-key.pem"}'
+```
+
+Example token connection:
+
+```bash
+airflow connections add vespa_token --conn-type vespa --conn-host "https://$VESPA_CLOUD_ENDPOINT" --conn-schema "doc" --conn-extra '{"extra__vespa__vespa_cloud_secret_token": "'$VESPA_CLOUD_SECRET_TOKEN'"}'
+```

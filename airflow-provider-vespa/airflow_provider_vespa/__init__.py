@@ -38,6 +38,16 @@ def get_provider_info():
             }
         ],
 
+        # --- triggers --------------------------------------------------------
+        "triggers": [
+            {
+                "integration-name": "Vespa",
+                "python-modules": [
+                    "airflow_provider_vespa.triggers.vespa_feed_trigger",
+                ],
+            }
+        ],
+
         # --- connection type (replaces deprecated hook-class-names) ---------
         "connection-types": [
             {
