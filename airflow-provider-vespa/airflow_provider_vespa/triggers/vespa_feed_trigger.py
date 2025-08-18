@@ -45,13 +45,16 @@ class VespaFeedTrigger(BaseTrigger):
             summary = await loop.run_in_executor(None, _feed)
             
             if summary["errors"]:
+                self.log.error(
+                    f"Vespa feed operation failed: {len(summary['errors'])} error(s) occurred. "
+                    f"Error details: {summary['error_details']}"
+                )
                 yield TriggerEvent({"success": False, "errors": summary["error_details"]})
             else:
+                self.log.info(f"Vespa feed operation completed successfully for {len(self.docs)} document(s)")
                 yield TriggerEvent({"success": True})
         except Exception as e:
             # Log the full exception for debugging purposes
-            import traceback
             error_msg = f"Trigger failed: {type(e).__name__}: {e}"
-            print(f"ERROR: {error_msg}")
-            traceback.print_exc()
+            self.log.error(error_msg, exc_info=True)
             yield TriggerEvent({"success": False, "errors": [{"error": error_msg}]})

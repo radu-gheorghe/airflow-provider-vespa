@@ -2,14 +2,6 @@ from typing import Callable, Dict, Iterable, List
 from vespa.application import Vespa
 from vespa.io import VespaResponse
 from airflow.hooks.base import BaseHook
-import uuid
-from queue import Queue
-
-try:
-    from wtforms import StringField  # type: ignore
-except ImportError:  # type: ignore
-    # Airflow's UI imports wtforms; during pure Python environments it may be absent.
-    StringField = lambda *args, **kwargs: None  # type: ignore
 
 class VespaHook(BaseHook):
     """
@@ -49,6 +41,13 @@ class VespaHook(BaseHook):
 
     @classmethod
     def get_connection_form_widgets(cls):
+
+        try:
+            from wtforms import StringField  # type: ignore
+        except ImportError:  # type: ignore
+            # Airflow's UI imports wtforms; during pure Python environments it may be absent.
+            StringField = lambda *args, **kwargs: None  # type: ignore
+            
         return {
             "extra__vespa__namespace": StringField("Namespace"),
             "extra__vespa__max_queue_size": StringField("Max feed queue size"),
