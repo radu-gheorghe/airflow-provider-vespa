@@ -1,0 +1,129 @@
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.4}
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    # this is needed for env-provided username/password
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # install your local provider (mounted below) editable
+    _PIP_ADDITIONAL_REQUIREMENTS: "-e /opt/airflow/dev/airflow-provider-vespa"
+    # connection for testing
+    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080?schema=doc&namespace=default"
+    # workers must talk to the execution API server
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://api-server:8080/execution/'
+    # and authenticate
+    AIRFLOW__CORE__FERNET_KEY: ''
+    # and use a secret key for JWT auth (this is a random string, base64 encoded)
+    AIRFLOW__API_AUTH__JWT_SECRET: "6xqepC-JBhClWnzYXGa08KqzbucedfcH7WTWqE2F11s="
+  volumes:
+    # the test DAG
+    - ./airflow-provider-vespa/tests/system/vespa:/opt/airflow/dags
+    # the Vespa provider code
+    - ./airflow-provider-vespa:/opt/airflow/dev/airflow-provider-vespa:rw
+  user: "${AIRFLOW_UID:-50000}:0"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  vespa:
+    image: vespaengine/vespa:latest
+    hostname: vespa
+    ports:
+      - "8080:8080"   # query/feed
+      - "19071:19071" # config server
+    healthcheck:
+      # Wait for the config server to be UP (does not require application deployment)
+      test: ["CMD-SHELL", "curl -fsS http://localhost:19071/state/v1/health | grep -q '\"status\":\"up\"'"]
+      interval: 10s
+      start_period: 60s
+      retries: 50
+    restart: unless-stopped
+
+  vespa-deploy:
+    image: alpine:3.20
+    entrypoint: /bin/sh
+    command: >
+      -c 'set -e;
+          apk add --no-cache zip curl;
+          until curl -fsS http://vespa:19071/; do echo "Waiting for config server to be healthy..."; sleep 5; done;
+          (cd /vespa_app && zip -r - .) |
+            curl --fail --show-error --silent --header Content-Type:application/zip --data-binary @- \
+              vespa:19071/application/v2/tenant/default/prepareandactivate;
+          until curl -fsS http://vespa:8080/; do echo "Waiting for Vespa endpoint after package deploy..."; sleep 5; done'
+    volumes:
+      - ./vespa_app:/vespa_app:ro
+    depends_on:
+      - vespa
+    restart: "no"
+
+  airflow-init:
+    <<: *airflow-common
+    # Use official entrypoint hooks to migrate DB and create admin user
+    command: version
+    environment:
+      <<: *airflow-common-env
+      # avoid pip-as-root warning in init container
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
+      # Run DB migration and create admin user via entrypoint hooks
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-airflow}
+
+  api-server:
+    <<: *airflow-common
+    command: api-server
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    ports:
+      - "8081:8080" # Airflow UI
+
+  scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    restart: unless-stopped
+
+  triggerer:
+    <<: *airflow-common
+    command: triggerer
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    restart: unless-stopped
+
+  dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    restart: unless-stopped
+
+volumes:
+  postgres-db-volume:

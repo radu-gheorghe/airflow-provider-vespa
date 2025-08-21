@@ -26,6 +26,7 @@ class VespaIngestOperator(BaseOperator):
         
         conn_info = {
             "host": conn.host,
+            "port": conn.port,
             "schema": conn.schema,
             "namespace": extra.get("extra__vespa__namespace") or "default",
             "extra": extra,

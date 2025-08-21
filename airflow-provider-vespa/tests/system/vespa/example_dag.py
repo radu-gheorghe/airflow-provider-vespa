@@ -7,7 +7,7 @@ from airflow_provider_vespa.operators.vespa_ingest import VespaIngestOperator
 os.environ['NO_PROXY'] = '*'
 
 @dag(
-    dag_id="vespa_hello_world_mtls",
+    dag_id="vespa_hello_world",
     start_date=datetime(2025, 7, 30),
     schedule="@once",
     catchup=False,
@@ -15,7 +15,7 @@ os.environ['NO_PROXY'] = '*'
 )
 def vespa_dynamic():
 
-    vespa_conn_id = "vespa_mtls"
+    vespa_conn_id = "vespa_connection"
 
     # this could read from a DB, S3, etc. and build micro-batches
     @task
