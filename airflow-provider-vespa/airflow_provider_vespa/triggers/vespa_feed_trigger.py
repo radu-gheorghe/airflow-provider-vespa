@@ -30,6 +30,7 @@ class VespaFeedTrigger(BaseTrigger):
             
             hook = VespaHook.from_resolved_connection(
                 host=self.conn_info["host"],
+                port=self.conn_info.get("port", None),
                 schema=self.conn_info["schema"],
                 namespace=self.conn_info["namespace"],
                 extra=self.conn_info["extra"],
@@ -46,9 +47,9 @@ class VespaFeedTrigger(BaseTrigger):
             
             if summary["errors"]:
                 self.log.error(
-                    f"Vespa feed operation failed: {len(summary['errors'])} error(s) occurred. "
+                    f"Vespa feed operation failed: {summary['errors']} error(s) occurred. "
                     f"Error details: {summary['error_details']}"
-                )
+                )  
                 yield TriggerEvent({"success": False, "errors": summary["error_details"]})
             else:
                 self.log.info(f"Vespa feed operation completed successfully for {len(self.docs)} document(s)")
