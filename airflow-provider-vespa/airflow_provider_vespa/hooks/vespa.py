@@ -1,4 +1,6 @@
 from typing import Callable, Dict, Iterable, List
+from queue import Queue
+import uuid
 from vespa.application import Vespa
 from vespa.io import VespaResponse
 from airflow.hooks.base import BaseHook

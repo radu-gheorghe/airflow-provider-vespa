@@ -4,5 +4,15 @@ version = "0.0.1"
 requires-python = ">=3.9"
 dependencies = ["apache-airflow>=2.9", "requests>=2.31", "pyvespa>=0.59.0"]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.14.0",
+    "pytest-instafail>=0.5.0",
+    "pytest-xdist>=3.5.0",
+]
+
 [project.entry-points."apache_airflow_provider"]
 provider_info = "airflow_provider_vespa:get_provider_info"
