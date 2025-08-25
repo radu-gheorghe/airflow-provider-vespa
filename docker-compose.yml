@@ -12,10 +12,14 @@ x-airflow-common: &airflow-common
     AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080?schema=doc&namespace=default"
     # workers must talk to the execution API server
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://api-server:8080/execution/'
-    # and authenticate
-    AIRFLOW__CORE__FERNET_KEY: ''
+    # and authenticate (some random key here)
+    AIRFLOW__CORE__FERNET_KEY: '7lxNkkDQddbDaN01Mm8XXBr2mO-T6khSC5J_gEINSW0='
     # and use a secret key for JWT auth (this is a random string, base64 encoded)
     AIRFLOW__API_AUTH__JWT_SECRET: "6xqepC-JBhClWnzYXGa08KqzbucedfcH7WTWqE2F11s="
+    # and then we need this other secret for logs to show up in the UI
+    AIRFLOW__WEBSERVER__SECRET_KEY: "SPYjbn9TQyHga4Q9p0rBRHPql0DZTe5mypJdNCR9wv8="
+    # makes our DAG run automatically
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
   volumes:
     # the test DAG
     - ./airflow-provider-vespa/tests/system/vespa:/opt/airflow/dags
