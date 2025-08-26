@@ -5,6 +5,12 @@ from vespa.application import Vespa
 from vespa.io import VespaResponse
 from airflow.hooks.base import BaseHook
 
+try:
+    from airflow.sdk import Connection
+except ImportError:
+    # Fallback for older Airflow versions
+    from airflow.models import Connection
+
 class VespaHook(BaseHook):
     """
     Very small hook: posts a single JSON document to Vespa via HTTP POST.

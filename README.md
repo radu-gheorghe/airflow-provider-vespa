@@ -95,9 +95,28 @@ To run the unit tests for the Airflow provider:
    
 ## Running Integration Tests
 
+### Airflow 3.x (Current)
+
    ```bash
    docker-compose up -d
    # or podman compose up -d
    ```
 
-   Then check that the example DAG ran successfully.
+   Then check that the example DAG ran successfully at http://localhost:8081
+
+### Airflow 2.9 Integration Test
+
+   To test compatibility with Airflow 2.9:
+
+   ```bash
+   docker-compose -f docker-compose-2.9.yml up -d
+   # or podman compose -f docker-compose-2.9.yml up -d
+   ```
+
+   Then check that the example DAG ran successfully at http://localhost:8082
+
+   **Key differences in Airflow 2.9 setup:**
+   - Uses `webserver` instead of `api-server`
+   - Different authentication configuration
+   - Runs on port 8082 to avoid conflicts
+   - Uses separate PostgreSQL volume (`postgres-db-volume-2-9`)
