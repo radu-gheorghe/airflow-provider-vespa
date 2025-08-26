@@ -78,3 +78,26 @@ Example token connection:
 ```bash
 airflow connections add vespa_token --conn-type vespa --conn-host "https://$VESPA_CLOUD_ENDPOINT" --conn-schema "doc" --conn-extra '{"extra__vespa__vespa_cloud_secret_token": "'$VESPA_CLOUD_SECRET_TOKEN'"}'
 ```
+
+## Running Unit Tests
+
+To run the unit tests for the Airflow provider:
+
+1. Install test dependencies:
+   ```bash
+   pip install -e "./airflow-provider-vespa[test]"
+   ```
+
+2. Run unit tests:
+   ```bash
+   pytest airflow-provider-vespa/tests/unit/
+   ```
+   
+## Running Integration Tests
+
+   ```bash
+   docker-compose up -d
+   # or podman compose up -d
+   ```
+
+   Then check that the example DAG ran successfully.
