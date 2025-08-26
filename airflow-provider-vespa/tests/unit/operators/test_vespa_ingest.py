@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch
-from airflow.exceptions import TaskDeferred
+from airflow.exceptions import TaskDeferred, AirflowException
 from airflow_provider_vespa.operators.vespa_ingest import VespaIngestOperator
 
 
@@ -82,3 +82,93 @@ class TestVespaIngestOperator:
         
         # Verify the callback method is set correctly
         assert exc_info.value.method_name == "execute_complete"
+    
+    def test_execute_complete_success(self):
+        """Test execute_complete with successful trigger result.
+        
+        When the trigger completes successfully, execute_complete should:
+        - Return a dictionary with the number of ingested documents
+        - Not raise any exceptions
+        """
+        docs = [{"id": "1", "title": "Test 1"}, {"id": "2", "title": "Test 2"}]
+        op = VespaIngestOperator(
+            task_id="test_ingest",
+            docs=docs,
+            vespa_conn_id="test_conn"
+        )
+        
+        # Mock successful trigger event
+        success_event = {"success": True}
+        context = {"task_instance": Mock()}
+        
+        # Execute complete should return success info
+        result = op.execute_complete(context, success_event)
+        
+        assert result == {"ingested": len(docs)}
+        assert result == {"ingested": 2}
+    
+    def test_execute_complete_failure_with_errors(self):
+        """Test execute_complete with failed trigger result containing errors.
+        
+        When the trigger fails with document errors, execute_complete should:
+        - Raise AirflowException with detailed error information
+        - Include error count and details in the exception message
+        """
+        docs = [
+            {"id": "1", "title": "Good doc"},
+            {"id": "2", "title": "Bad doc"},
+            {"id": "3", "title": "Another bad doc"}
+        ]
+        op = VespaIngestOperator(
+            task_id="test_ingest",
+            docs=docs,
+            vespa_conn_id="test_conn"
+        )
+        
+        # Mock failed trigger event with errors
+        failure_event = {
+            "success": False,
+            "errors": [
+                {"id": "2", "status": 400, "reason": {"error": "Invalid format"}},
+                {"id": "3", "status": 500, "reason": {"error": "Server error"}}
+            ]
+        }
+        context = {"task_instance": Mock()}
+        
+        # Execute complete should raise AirflowException
+        with pytest.raises(AirflowException) as exc_info:
+            op.execute_complete(context, failure_event)
+        
+        # Verify exception message contains error details
+        error_message = str(exc_info.value)
+        assert "2 document(s) failed out of 3" in error_message
+        assert "Error details:" in error_message
+        assert "Invalid format" in error_message or "Server error" in error_message
+    
+    def test_execute_complete_failure_with_exception_error(self):
+        """Test execute_complete with failed trigger result from exception.
+        
+        When the trigger fails due to an exception (not document errors),
+        it should still provide error details in the errors list.
+        """
+        docs = [{"id": "1", "title": "Test"}]
+        op = VespaIngestOperator(
+            task_id="test_ingest", 
+            docs=docs,
+            vespa_conn_id="test_conn"
+        )
+        
+        # Mock failed trigger event with exception error (as trigger would actually return)
+        failure_event = {
+            "success": False,
+            "errors": [{"error": "Trigger failed: ConnectionError: Unable to connect to Vespa"}]
+        }
+        context = {"task_instance": Mock()}
+        
+        # Should raise exception with the trigger's error details
+        with pytest.raises(AirflowException) as exc_info:
+            op.execute_complete(context, failure_event)
+        
+        error_message = str(exc_info.value)
+        assert "1 document(s) failed out of 1" in error_message
+        assert "ConnectionError" in error_message

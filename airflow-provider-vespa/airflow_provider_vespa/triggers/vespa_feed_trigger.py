@@ -46,7 +46,7 @@ class VespaFeedTrigger(BaseTrigger):
             
             if summary["errors"]:
                 self.log.error(
-                    f"Vespa feed operation failed: {len(summary['errors'])} error(s) occurred. "
+                    f"Vespa feed operation failed: {summary['errors']} error(s) occurred. "
                     f"Error details: {summary['error_details']}"
                 )
                 yield TriggerEvent({"success": False, "errors": summary["error_details"]})
