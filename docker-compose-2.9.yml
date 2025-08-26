@@ -1,0 +1,158 @@
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # Basic authentication for API access
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    # Install your local provider (mounted below) editable
+    _PIP_ADDITIONAL_REQUIREMENTS: "-e /opt/airflow/dev/airflow-provider-vespa"
+    # Connection for testing
+    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080?schema=doc&namespace=default"
+    # Fernet key for encryption (again, some random key here)
+    AIRFLOW__CORE__FERNET_KEY: '7lxNkkDQddbDaN01Mm8XXBr2mO-T6khSC5J_gEINSW0='
+    # Secret key for webserver (random key here as well)
+    AIRFLOW__WEBSERVER__SECRET_KEY: "SPYjbn9TQyHga4Q9p0rBRHPql0DZTe5mypJdNCR9wv8="
+    # Makes our DAG run automatically
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+  volumes:
+    # The test DAG
+    - ./airflow-provider-vespa/tests/system/vespa:/opt/airflow/dags
+    # The Vespa provider code
+    - ./airflow-provider-vespa:/opt/airflow/dev/airflow-provider-vespa:rw
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume-2-9:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  vespa:
+    image: vespaengine/vespa:latest
+    hostname: vespa
+    ports:
+      - "8080:8080"   # query/feed
+      - "19071:19071" # config server
+    healthcheck:
+      # Wait for the config server to be UP (does not require application deployment)
+      test: ["CMD-SHELL", "curl -fsS http://localhost:19071/state/v1/health | grep -q '\"status\":\"up\"'"]
+      interval: 10s
+      start_period: 60s
+      retries: 50
+    restart: unless-stopped
+
+  vespa-deploy:
+    image: alpine:3.20
+    entrypoint: /bin/sh
+    command: >
+      -c 'set -e;
+          apk add --no-cache zip curl;
+          until curl -fsS http://vespa:19071/; do echo "Waiting for config server to be healthy..."; sleep 5; done;
+          (cd /vespa_app && zip -r - .) |
+            curl --fail --show-error --silent --header Content-Type:application/zip --data-binary @- \
+              vespa:19071/application/v2/tenant/default/prepareandactivate;
+          until curl -fsS http://vespa:8080/; do echo "Waiting for Vespa endpoint after package deploy..."; sleep 5; done'
+    volumes:
+      - ./vespa_app:/vespa_app:ro
+    depends_on:
+      - vespa
+    restart: "no"
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /usr/bin/dumb-init --
+    command: >
+      bash -c "
+        if [[ -z '${AIRFLOW_UID}' ]]; then
+          echo
+          echo -e '\\e[1;33mWARNING: AIRFLOW_UID not set!\\e[0m'
+          echo 'Setting AIRFLOW_UID to default value of 50000'
+          export AIRFLOW_UID=50000
+        fi
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R '${AIRFLOW_UID}:0' /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+      "
+    environment:
+      <<: *airflow-common-env
+      # Avoid pip-as-root warning in init container
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
+      # Run DB migration and create admin user
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
+    depends_on:
+      - postgres
+
+  webserver:
+    <<: *airflow-common
+    command: webserver
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    ports:
+      - "8082:8080" # Airflow UI (using 8082 to avoid conflict with current setup)
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  triggerer:
+    <<: *airflow-common
+    command: triggerer
+    depends_on:
+      - postgres
+      - airflow-init
+      - vespa
+      - vespa-deploy
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres-db-volume-2-9:
