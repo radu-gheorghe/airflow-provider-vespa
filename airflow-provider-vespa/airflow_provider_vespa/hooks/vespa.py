@@ -1,5 +1,5 @@
-from typing import Callable, Dict, Iterable, List
 from queue import Queue
+from typing import Callable, Dict, Iterable, List
 import uuid
 from vespa.application import Vespa
 from vespa.io import VespaResponse
@@ -33,6 +33,7 @@ class VespaHook(BaseHook):
         
         self._configure_from_connection(
             host=self.conn.host,
+            port=self.conn.port,
             namespace=namespace or extra.get("namespace", "default"),
             schema=schema or self.conn.schema,
             extra=extra,
@@ -77,7 +78,7 @@ class VespaHook(BaseHook):
 
     # -------------------------------------------------------------------------------
 
-    def _configure_from_connection(self, *, host: str, namespace: str, schema: str, extra: Dict):
+    def _configure_from_connection(self, *, host: str, port: int | None = None, namespace: str, schema: str, extra: Dict):
         """Populate instance attributes shared by both constructors."""
         
         # Get certificate file paths directly from connection config
@@ -103,10 +104,24 @@ class VespaHook(BaseHook):
         else:
             self.log.info("Using mTLS authentication with certificate files")
         
+        url = host.rstrip("/")
+        # we default to HTTP if no protocol is provided
+        protocol = extra.get("protocol", "http")
+
+        if host.startswith("http://") or host.startswith("https://"):
+            url = host
+        else:
+            url = f"{protocol}://{host}"
+
+        # append the port if it's provided and not already present
+        if port and not url.endswith(f":{port}"):
+            url = f"{url}:{port}"
+        
+        self.log.info(f"Connecting to Vespa at {url}")
         
         self.vespa_app = Vespa(
             # TODO: param validation
-            url=host.rstrip("/"), 
+            url=url, 
             vespa_cloud_secret_token=token,
             cert=cert_file,
             key=key_file,
@@ -120,7 +135,7 @@ class VespaHook(BaseHook):
         self.feed_errors_queue = Queue()
 
     @classmethod
-    def from_resolved_connection(cls, *, host: str, schema: str | None = None, namespace: str | None = None, extra: Dict):
+    def from_resolved_connection(cls, *, host: str, port: int | None = None, schema: str | None = None, namespace: str | None = None, extra: Dict):
         """Instantiate a ``VespaHook`` without querying Airflow's metadata database.
 
         This helper is intended for use inside Trigger processes, where
@@ -138,6 +153,7 @@ class VespaHook(BaseHook):
         
         self._configure_from_connection(
             host=host,
+            port=port,
             namespace=namespace or extra.get("namespace", "default"),
             schema=schema or extra.get("schema"),
             extra=extra,
