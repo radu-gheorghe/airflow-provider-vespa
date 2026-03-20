@@ -1,8 +1,8 @@
 [project]
 name = "airflow-provider-vespa"
 version = "0.0.1"
-requires-python = ">=3.9"
-dependencies = ["apache-airflow>=2.9", "requests>=2.31", "pyvespa>=0.59.0"]
+requires-python = ">=3.10"
+dependencies = ["apache-airflow>=2.9", "pyvespa>=1.1.2"]
 
 [project.optional-dependencies]
 test = [

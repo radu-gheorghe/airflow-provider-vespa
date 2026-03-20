@@ -93,8 +93,8 @@ airflow connections add vespa_mtls \
   --conn-host "https://ENDPOINT" \
   --conn-schema "doc" \
   --conn-extra '{
-    "extra__vespa__client_cert_path": "/path/to/cert.pem",
-    "extra__vespa__client_key_path": "/path/to/key.pem"
+    "client_cert_path": "/path/to/cert.pem",
+    "client_key_path": "/path/to/key.pem"
   }'
 ```
 
@@ -105,7 +105,7 @@ airflow connections add vespa_token \
   --conn-host "https://$VESPA_CLOUD_ENDPOINT" \
   --conn-schema "doc" \
   --conn-extra '{
-    "extra__vespa__vespa_cloud_secret_token": "$TOKEN"
+    "vespa_cloud_secret_token": "$TOKEN"
   }'
 ```
 

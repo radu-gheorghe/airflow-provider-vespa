@@ -9,7 +9,7 @@ x-airflow-common: &airflow-common
     # Install your local provider (mounted below) editable
     _PIP_ADDITIONAL_REQUIREMENTS: "-e /opt/airflow/dev/airflow-provider-vespa"
     # Connection for testing
-    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080?schema=doc&namespace=default"
+    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080/doc?namespace=default"
     # Fernet key for encryption (again, some random key here)
     AIRFLOW__CORE__FERNET_KEY: '7lxNkkDQddbDaN01Mm8XXBr2mO-T6khSC5J_gEINSW0='
     # Secret key for webserver (random key here as well)
