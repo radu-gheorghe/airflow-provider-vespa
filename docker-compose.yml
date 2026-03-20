@@ -1,5 +1,5 @@
 x-airflow-common: &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.0.4}
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.8}
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
@@ -9,7 +9,7 @@ x-airflow-common: &airflow-common
     # install your local provider (mounted below) editable
     _PIP_ADDITIONAL_REQUIREMENTS: "-e /opt/airflow/dev/airflow-provider-vespa"
     # connection for testing
-    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080?schema=doc&namespace=default"
+    AIRFLOW_CONN_VESPA_CONNECTION: "vespa://vespa:8080/doc?namespace=default"
     # workers must talk to the execution API server
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://api-server:8080/execution/'
     # and authenticate (some random key here)
