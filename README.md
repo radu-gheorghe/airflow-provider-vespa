@@ -1,3 +1,8 @@
+# DEPRECATED
+This provider (further improved) was contributed to Airflow itself: https://github.com/apache/airflow/tree/main/providers/vespa.
+
+I strongly suggest using that one and providing any feedback there (I'm one of the maintainers).
+
 # Airflow Vespa Provider
 
 This Apache Airflow provider integrates with [Vespa](https://vespa.ai), an AI search platform.
